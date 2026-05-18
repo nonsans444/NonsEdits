@@ -37,12 +37,13 @@ async function startServer() {
   });
 
   const fileFilter = (req: any, file: any, cb: any) => {
-    const allowedTypes = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedTypes.includes(ext)) {
+    const allowedExtensions = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".quicktime"];
+    
+    if (allowedExtensions.includes(ext) || file.mimetype.startsWith("video/")) {
       cb(null, true);
     } else {
-      cb(new Error("Unsupported file format. Please upload MP4, MOV, AVI, MKV or WEBM."));
+      cb(new Error("Unsupported file format. Please upload a video file."));
     }
   };
 
@@ -52,20 +53,29 @@ async function startServer() {
     limits: { fileSize: 100 * 1024 * 1024 } // 100MB Limit
   });
 
+  // Health Check
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "online", 
+      timestamp: new Date().toISOString(),
+      uploadsDir: fs.existsSync(uploadsDir) ? "accessible" : "missing"
+    });
+  });
+
   // API: Video Upload
   app.post("/api/upload", (req, res) => {
-    upload.single("video")(req, res, (err) => {
-      if (err instanceof multer.MulterError) {
-        if (err.code === "LIMIT_FILE_SIZE") {
-          return res.status(400).json({ success: false, message: "File size exceeds 100MB limit." });
-        }
-        return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
-      } else if (err) {
-        return res.status(400).json({ success: false, message: err.message });
+    const handler = upload.single("video");
+    handler(req, res, (err) => {
+      if (err) {
+        console.error("Upload error:", err);
+        return res.status(err instanceof multer.MulterError ? 400 : 500).json({ 
+          success: false, 
+          message: err.message || "File ingestion failed." 
+        });
       }
 
       if (!req.file) {
-        return res.status(400).json({ success: false, message: "No file provided." });
+        return res.status(400).json({ success: false, message: "No video file received." });
       }
 
       res.json({ 
@@ -78,22 +88,22 @@ async function startServer() {
 
   // API: Voice Sample Upload
   app.post("/api/upload-voice", (req, res) => {
-    const voiceUpload = multer({
+    const voiceHandler = multer({
       storage: storage,
       fileFilter: (req, file, cb) => {
-        const allowed = [".mp3", ".wav", ".m4a", ".ogg"];
-        if (allowed.includes(path.extname(file.originalname).toLowerCase())) {
+        const allowed = [".mp3", ".wav", ".m4a", ".ogg", ".aac"];
+        if (allowed.includes(path.extname(file.originalname).toLowerCase()) || file.mimetype.startsWith("audio/")) {
           cb(null, true);
         } else {
-          cb(new Error("Voice sample must be audio (MP3, WAV, M4A)."));
+          cb(new Error("Voice sample must be audio (MP3, WAV, M4A, AAC)."));
         }
       },
-      limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for voice
+      limits: { fileSize: 20 * 1024 * 1024 } // Loosened to 20MB
     }).single("voice");
-
-    voiceUpload(req, res, (err) => {
+    
+    voiceHandler(req, res, (err) => {
       if (err) return res.status(400).json({ success: false, message: err.message });
-      if (!req.file) return res.status(400).json({ success: false, message: "No voice sample provided." });
+      if (!req.file) return res.status(400).json({ success: false, message: "No audio sample received." });
       
       res.json({ 
         success: true, 
@@ -144,8 +154,15 @@ async function startServer() {
       });
 
       const responseText = analysisRes.text || "{}";
-      const cleanJson = responseText.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleanJson);
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const cleanJson = jsonMatch ? jsonMatch[0] : responseText.replace(/```json|```/g, "").trim();
+      
+      let parsed = { themes: [], sentiment: "Neutral", engagementScore: 50, viralReason: "", narration: "" };
+      try {
+        parsed = JSON.parse(cleanJson);
+      } catch (e) {
+        console.error("Failed to parse Gemini JSON:", cleanJson);
+      }
       
       aiAnalysis = {
         themes: parsed.themes || ["Content Creation", "Visual Arts", "Digital Media"],

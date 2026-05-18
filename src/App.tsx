@@ -378,7 +378,27 @@ export default function App() {
         </section>
 
         {/* Main Viewport */}
-        <section className="lg:col-span-8 flex flex-col bg-zinc-900/10">
+        <section className="lg:col-span-8 flex flex-col bg-zinc-900/10 relative">
+          {/* Error Banner */}
+          <AnimatePresence>
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4"
+              >
+                <div className="bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                    <p className="text-sm font-bold truncate">{error}</p>
+                  </div>
+                  <button onClick={() => setError(null)} className="text-white/70 hover:text-white text-xs font-black">X</button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex-1 p-8 lg:p-12 flex flex-col min-h-0">
             
             <motion.div 
