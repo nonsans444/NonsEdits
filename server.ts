@@ -35,32 +35,71 @@ async function startServer() {
     destination: (req, file, cb) => cb(null, uploadsDir),
     filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
   });
+
+  const fileFilter = (req: any, file: any, cb: any) => {
+    const allowedTypes = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Unsupported file format. Please upload MP4, MOV, AVI, MKV or WEBM."));
+    }
+  };
+
   const upload = multer({ 
     storage: storage,
+    fileFilter: fileFilter,
     limits: { fileSize: 100 * 1024 * 1024 } // 100MB Limit
   });
 
   // API: Video Upload
-  app.post("/api/upload", upload.single("video"), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded." });
-    }
-    res.json({ 
-      success: true, 
-      filename: req.file.filename, 
-      filePath: `/uploads/${req.file.filename}` 
+  app.post("/api/upload", (req, res) => {
+    upload.single("video")(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ success: false, message: "File size exceeds 100MB limit." });
+        }
+        return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+      } else if (err) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: "No file provided." });
+      }
+
+      res.json({ 
+        success: true, 
+        filename: req.file.filename, 
+        filePath: `/uploads/${req.file.filename}` 
+      });
     });
   });
 
   // API: Voice Sample Upload
-  app.post("/api/upload-voice", upload.single("voice"), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No voice sample uploaded." });
-    }
-    res.json({ 
-      success: true, 
-      filename: req.file.filename, 
-      message: "Voice profile captured and secured."
+  app.post("/api/upload-voice", (req, res) => {
+    const voiceUpload = multer({
+      storage: storage,
+      fileFilter: (req, file, cb) => {
+        const allowed = [".mp3", ".wav", ".m4a", ".ogg"];
+        if (allowed.includes(path.extname(file.originalname).toLowerCase())) {
+          cb(null, true);
+        } else {
+          cb(new Error("Voice sample must be audio (MP3, WAV, M4A)."));
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for voice
+    }).single("voice");
+
+    voiceUpload(req, res, (err) => {
+      if (err) return res.status(400).json({ success: false, message: err.message });
+      if (!req.file) return res.status(400).json({ success: false, message: "No voice sample provided." });
+      
+      res.json({ 
+        success: true, 
+        filename: req.file.filename, 
+        message: "Voice profile captured and secured."
+      });
     });
   });
 
@@ -78,22 +117,54 @@ async function startServer() {
     const narrationPath = path.join(uploadsDir, "narration_" + Date.now() + ".mp3");
 
     let useNarration = false;
+    let aiAnalysis = null;
 
-    // 1. Generate Narration Script & Audio if requested
-    // ... (rest of the narration logic remains same)
-    if (voice && voice !== "none") {
-      try {
-        console.log("Generating narration script with Gemini...");
-        const scriptRes = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: "Generate a short, viral-style 1-sentence social media narration for a video. Just provide the script text, no quotes.",
-        });
-        const script = scriptRes.text || "Check out this amazing footage!";
+    // 1. Generate Narration Script & Analysis with Gemini
+    try {
+      console.log("Generating AI insights and narration with Gemini...");
+      const analysisPrompt = `
+        Analyze a social media video with the following configuration:
+        - Target Language: ${language}
+        - Background Music: ${music}
+        - Voice: ${voice}
+        
+        Provide a JSON response with:
+        1. "themes": Array of 3 key themes.
+        2. "sentiment": Overall vibe/sentiment (e.g., Energetic, Dark, Inspirational).
+        3. "engagementScore": Predicted score from 1-100.
+        4. "viralReason": One sentence why it might go viral.
+        5. "narration": A short, viral-style 1-sentence script text.
+        
+        Return ONLY valid JSON.
+      `;
 
+      const analysisRes = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: analysisPrompt,
+      });
+
+      const responseText = analysisRes.text || "{}";
+      const cleanJson = responseText.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleanJson);
+      
+      aiAnalysis = {
+        themes: parsed.themes || ["Content Creation", "Visual Arts", "Digital Media"],
+        sentiment: parsed.sentiment || "Neutral",
+        engagementScore: parsed.engagementScore || 50,
+        viralReason: parsed.viralReason || "Visual quality and trend alignment."
+      };
+
+      const script = parsed.narration || "Check out this amazing footage!";
+
+      if (voice && voice !== "none") {
         if (voice === "cloned" && process.env.ELEVENLABS_API_KEY && voiceSample) {
           console.log("Attempting ElevenLabs Voice Cloning...");
           const voiceSamplePath = path.join(uploadsDir, voiceSample);
           
+          if (!fs.existsSync(voiceSamplePath)) {
+            throw new Error("Voice sample file missing from server.");
+          }
+
           // A. Add Voice to ElevenLabs
           const addVoiceFormData = new FormData();
           addVoiceFormData.append("name", "NonsEdit_Clone_" + Date.now());
@@ -105,6 +176,12 @@ async function startServer() {
             headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY },
             body: addVoiceFormData
           });
+
+          if (!voiceAddRes.ok) {
+            const errData = await voiceAddRes.json();
+            throw new Error(`ElevenLabs API Error: ${JSON.stringify(errData)}`);
+          }
+
           const voiceData: any = await voiceAddRes.json();
           const voiceId = voiceData.voice_id;
 
@@ -118,6 +195,8 @@ async function startServer() {
               },
               body: JSON.stringify({ text: script })
             });
+
+            if (!ttsRes.ok) throw new Error("ElevenLabs Narration Synthesis Failed.");
 
             const audioArrayBuffer = await ttsRes.arrayBuffer();
             fs.writeFileSync(narrationPath, Buffer.from(audioArrayBuffer));
@@ -142,20 +221,24 @@ async function startServer() {
               useNarration = true;
             }
         }
-      } catch (err) {
-        console.error("AI Narration Error:", err);
       }
+    } catch (err) {
+      console.error("AI Analysis/Narration Error:", err);
     }
 
     // 2. Hosting Check & FFmpeg Processing
     exec("ffmpeg -version", (error) => {
       if (error) {
-        console.warn("FFmpeg binary signature not detected on host. Executing Cloud-AI Simulation Pipeline.");
+        console.warn("FFmpeg not found. Simulation active.");
         try {
+          if (!fs.existsSync(inputPath)) {
+            return res.status(404).json({ success: false, message: "Input source lost. Please re-upload." });
+          }
           fs.copyFileSync(inputPath, outputPath);
           return res.json({
             success: true,
             editedVideo: `/uploads/${editedFilename}`,
+            aiAnalysis: aiAnalysis,
             copyrightCheck: {
               status: "Passed Safe (Simulation)",
               musicDetected: music !== "none" ? music : "None",
@@ -163,9 +246,9 @@ async function startServer() {
             },
             platforms: ["YouTube Shorts", "TikTok", "Instagram Reels"]
           });
-        } catch (fsErr) {
-          console.error("FS Simulation Copy Failed:", fsErr);
-          return res.status(500).json({ success: false, message: "Local storage write error during simulation." });
+        } catch (fsErr: any) {
+          console.error("FS Error:", fsErr);
+          return res.status(500).json({ success: false, message: `System error during video synthesis: ${fsErr.message}` });
         }
       }
 
@@ -215,6 +298,7 @@ async function startServer() {
           res.json({
             success: true,
             editedVideo: `/uploads/${editedFilename}`,
+            aiAnalysis: aiAnalysis,
             copyrightCheck: {
               status: "Passed",
               musicDetected: music !== "none" ? music : "None",

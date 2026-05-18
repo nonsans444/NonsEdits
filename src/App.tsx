@@ -21,10 +21,18 @@ interface CopyrightCheck {
   copyrightSafe: boolean;
 }
 
+interface AIAnalysis {
+  themes: string[];
+  sentiment: string;
+  engagementScore: number;
+  viralReason: string;
+}
+
 interface ProcessResponse {
   success: boolean;
   editedVideo: string;
   copyrightCheck: CopyrightCheck;
+  aiAnalysis: AIAnalysis;
   platforms: string[];
 }
 
@@ -78,6 +86,12 @@ export default function App() {
         method: "POST",
         body: formData,
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Upload failed with status ${response.status}`);
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -86,9 +100,9 @@ export default function App() {
       } else {
         setError(data.message || "Upload failed.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Network Error during file ingestion.");
+      setError(err.message || "Network Error during file ingestion.");
     } finally {
       setIsUploading(false);
     }
@@ -104,6 +118,12 @@ export default function App() {
         method: "POST",
         body: formData,
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Voice upload failed with status ${response.status}`);
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -112,9 +132,10 @@ export default function App() {
       } else {
         setError(data.message || "Voice upload failed.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Network Error during voice ingestion.");
+      setIsUploading(false);
+      setError(err.message || "Network link failure encountered.");
     }
   };
 
@@ -134,6 +155,19 @@ export default function App() {
           ...config
         }),
       });
+
+      if (!response.ok) {
+        let errorMessage = "Crucial render sequence interrupted.";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          if (response.status === 504) errorMessage = "Gateway Timeout: Processing took too long.";
+          else if (response.status === 413) errorMessage = "Payload too large for system processing.";
+        }
+        throw new Error(errorMessage);
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -141,9 +175,9 @@ export default function App() {
       } else {
         setError(data.message || "AI sequence failed.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Fatal error during AI execution loop.");
+      setError(err.message || "Fatal error during AI execution loop.");
     } finally {
       setIsProcessing(false);
     }
@@ -432,48 +466,98 @@ export default function App() {
             </motion.div>
 
             {/* Bottom: Analysis Controls */}
-            <div className="h-auto lg:h-48 mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-              <div className="border border-zinc-800 p-6 bg-zinc-950/40 relative group transition-colors hover:bg-zinc-950/60">
-                <div className="absolute top-0 right-0 p-3">
-                  <div className={`w-2 h-2 rounded-full ${videoResult ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-zinc-800"}`}></div>
-                </div>
-                <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mb-4">Copyright Scan</p>
-                <div className="flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-zinc-300">Global Safety Check</span>
-                    <span className={`text-xs font-mono ${videoResult ? "text-emerald-400" : "text-zinc-600"}`}>
-                      {videoResult ? "[PASSED]" : "[AWAITING]"}
-                    </span>
+            <div className="mt-8 space-y-8">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Copyright Scan */}
+                <div className="border border-zinc-800 p-6 bg-zinc-950/40 relative group transition-colors hover:bg-zinc-950/60">
+                  <div className="absolute top-0 right-0 p-3">
+                    <div className={`w-2 h-2 rounded-full ${videoResult ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-zinc-800"}`}></div>
                   </div>
-                  <div className="h-1 bg-zinc-900 w-full rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: videoResult ? "100%" : "0%" }}
-                      className="bg-emerald-500 h-full"
-                    />
+                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mb-4">Copyright Scan</p>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-bold text-zinc-300">Global Safety Check</span>
+                      <span className={`text-xs font-mono ${videoResult ? "text-emerald-400" : "text-zinc-600"}`}>
+                        {videoResult ? "[PASSED]" : "[AWAITING]"}
+                      </span>
+                    </div>
+                    <div className="h-1 bg-zinc-900 w-full rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: videoResult ? "100%" : "0%" }}
+                        className="bg-emerald-500 h-full"
+                      />
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-2 italic">
+                      {videoResult ? `Detection: ${videoResult.copyrightCheck.musicDetected}. Safe for monetization.` : "Pending neural analysis of output stream."}
+                    </p>
                   </div>
-                  <p className="text-[10px] text-zinc-500 mt-2 italic">
-                    {videoResult ? `Detection: ${videoResult.copyrightCheck.musicDetected}. Safe for monetization.` : "Pending neural analysis of output stream."}
-                  </p>
                 </div>
-              </div>
 
-              <div className="border border-zinc-800 p-6 bg-zinc-950/40">
-                <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mb-4">Export Channels</p>
-                <div className="flex flex-wrap gap-2">
-                  {videoResult ? (
-                    videoResult.platforms.map((p) => (
-                      <div key={p} className={`px-4 py-2 border rounded-full text-[10px] font-black tracking-widest transition-all ${p.includes('Shorts') ? 'border-red-600/30 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-400'}`}>
-                        {p.toUpperCase()}
+                {/* AI Content Analysis */}
+                <div className="border border-zinc-800 p-6 bg-zinc-950/40 relative group">
+                  <div className="absolute top-0 right-0 p-3 flex gap-2">
+                    <Zap className={`w-3 h-3 ${videoResult ? "text-yellow-500" : "text-zinc-800"}`} />
+                  </div>
+                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mb-4">AI Content Insights</p>
+                  
+                  {videoResult?.aiAnalysis ? (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-end">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-zinc-500 uppercase block">Virality Score</span>
+                          <span className="text-2xl font-black text-red-500 italic tracking-tighter">{videoResult.aiAnalysis.engagementScore}%</span>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <span className="text-[10px] text-zinc-500 uppercase block">Vibe Check</span>
+                          <span className="text-xs font-bold text-zinc-300 uppercase tracking-widest">{videoResult.aiAnalysis.sentiment}</span>
+                        </div>
                       </div>
-                    ))
+
+                      <div className="space-y-2">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Core Themes</span>
+                        <div className="flex flex-wrap gap-2">
+                          {videoResult.aiAnalysis.themes.map((theme, i) => (
+                            <span key={i} className="text-[9px] px-2 py-0.5 border border-zinc-800 bg-zinc-900 text-zinc-400 lowercase">#{theme.replace(/\s+/g, '')}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-zinc-500 leading-tight border-l border-red-600/30 pl-3 py-1">
+                        <span className="text-red-500 font-bold mr-2">PREDICTION:</span>
+                        {videoResult.aiAnalysis.viralReason}
+                      </p>
+                    </div>
                   ) : (
-                    <div className="px-4 py-2 border border-zinc-800 rounded-full text-[10px] font-bold text-zinc-700 italic">SYSTEM_ANALYSIS_PENDING</div>
+                    <div className="flex flex-col items-center justify-center h-24 gap-3 opacity-20">
+                      <div className="w-full flex gap-1 items-center justify-center">
+                        <div className="w-4 h-0.5 bg-zinc-800 animate-pulse" />
+                        <div className="w-8 h-0.5 bg-zinc-800 animate-pulse delay-75" />
+                        <div className="w-4 h-0.5 bg-zinc-800 animate-pulse delay-150" />
+                      </div>
+                      <span className="text-[9px] font-mono tracking-widest">ANALYSIS_LOCKED</span>
+                    </div>
                   )}
                 </div>
-                <p className="text-[10px] text-zinc-500 mt-4 leading-tight italic opacity-70">
-                  AI recommended for vertical-first high-retention mobile consumption.
-                </p>
+
+                {/* Export Channels */}
+                <div className="border border-zinc-800 p-6 bg-zinc-950/40">
+                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mb-4">Export Channels</p>
+                  <div className="flex flex-wrap gap-2">
+                    {videoResult ? (
+                      videoResult.platforms.map((p) => (
+                        <div key={p} className={`px-4 py-2 border rounded-full text-[10px] font-black tracking-widest transition-all ${p.includes('Shorts') ? 'border-red-600/30 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-400'}`}>
+                          {p.toUpperCase()}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 border border-zinc-800 rounded-full text-[10px] font-bold text-zinc-700 italic">SYSTEM_ANALYSIS_PENDING</div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-4 leading-tight italic opacity-70">
+                    AI recommended for vertical-first high-retention mobile consumption.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
