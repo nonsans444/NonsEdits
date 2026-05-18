@@ -110,6 +110,8 @@ export default function App() {
 
   const uploadVoice = async (file: File) => {
     setError(null);
+    setIsUploading(true);
+    setUploadStatus("Securing voice sample for neural cloning...");
     const formData = new FormData();
     formData.append("voice", file);
 
@@ -128,22 +130,38 @@ export default function App() {
 
       if (data.success) {
         setVoiceSampleFilename(data.filename);
+        setUploadStatus("Voice profile locked. Neural clone active.");
         setConfig(prev => ({ ...prev, voice: 'cloned' }));
       } else {
         setError(data.message || "Voice upload failed.");
       }
     } catch (err: any) {
       console.error(err);
-      setIsUploading(false);
       setError(err.message || "Network link failure encountered.");
+    } finally {
+      setIsUploading(false);
     }
   };
+
+  const [processingStep, setProcessingStep] = useState(0);
+  const processingStages = [
+    "Analyzing visual stream with Gemini Vision...",
+    "Extracting viral core & sentiment profile...",
+    "Synthesizing neural narration layers...",
+    "Burn-in cinematic subtitles & overlays...",
+    "Finalizing export codec & safety checks..."
+  ];
 
   const processVideo = async () => {
     if (!uploadedFilename) return;
 
     setIsProcessing(true);
     setError(null);
+    setProcessingStep(0);
+
+    const stepInterval = setInterval(() => {
+      setProcessingStep(prev => (prev < processingStages.length - 1 ? prev + 1 : prev));
+    }, 2500);
 
     try {
       const response = await fetch("/api/process", {
@@ -157,6 +175,7 @@ export default function App() {
       });
 
       if (!response.ok) {
+        clearInterval(stepInterval);
         let errorMessage = "Crucial render sequence interrupted.";
         try {
           const errorData = await response.json();
@@ -171,11 +190,15 @@ export default function App() {
       const data = await response.json();
 
       if (data.success) {
-        setVideoResult(data);
+        clearInterval(stepInterval);
+        setProcessingStep(processingStages.length - 1);
+        setTimeout(() => setVideoResult(data), 500);
       } else {
+        clearInterval(stepInterval);
         setError(data.message || "AI sequence failed.");
       }
     } catch (err: any) {
+      clearInterval(stepInterval);
       console.error(err);
       setError(err.message || "Fatal error during AI execution loop.");
     } finally {
@@ -243,8 +266,9 @@ export default function App() {
                 <div className="relative">
                   <select 
                     value={config.language}
+                    disabled={isUploading || isProcessing}
                     onChange={(e) => setConfig({...config, language: e.target.value})}
-                    className="w-full bg-zinc-900 border border-zinc-800 appearance-none px-4 py-3 text-sm text-zinc-300 focus:border-red-600 outline-none cursor-pointer transition-colors"
+                    className="w-full bg-zinc-900 border border-zinc-800 appearance-none px-4 py-3 text-sm text-zinc-300 focus:border-red-600 outline-none cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="en">English (Global)</option>
                     <option value="ru">Russian (Cyrillic)</option>
@@ -261,15 +285,18 @@ export default function App() {
                 <div className="grid grid-cols-3 gap-2">
                   <button 
                     onClick={() => setConfig({...config, font: 'impact'})}
-                    className={`text-[10px] py-2 uppercase font-bold transition-all border ${config.font === 'impact' ? 'border-red-600 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
+                    disabled={isUploading || isProcessing}
+                    className={`text-[10px] py-2 uppercase font-bold transition-all border ${config.font === 'impact' ? 'border-red-600 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
                   >Impact</button>
                   <button 
                     onClick={() => setConfig({...config, font: 'inter'})}
-                    className={`text-[10px] py-2 uppercase font-bold transition-all border ${config.font === 'inter' ? 'border-red-600 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
+                    disabled={isUploading || isProcessing}
+                    className={`text-[10px] py-2 uppercase font-bold transition-all border ${config.font === 'inter' ? 'border-red-600 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
                   >Minimal</button>
                   <button 
                     onClick={() => setConfig({...config, font: 'rubik'})}
-                    className={`text-[10px] py-2 uppercase font-bold transition-all border ${config.font === 'rubik' ? 'border-red-600 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
+                    disabled={isUploading || isProcessing}
+                    className={`text-[10px] py-2 uppercase font-bold transition-all border ${config.font === 'rubik' ? 'border-red-600 bg-red-600/10 text-red-500' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
                   >Modern</button>
                 </div>
               </div>
@@ -285,6 +312,7 @@ export default function App() {
                   ].map((v) => (
                     <button 
                       key={v.id}
+                      disabled={isUploading || isProcessing}
                       onClick={() => {
                         if (v.id === 'cloned' && !voiceSampleFilename) {
                           voiceInputRef.current?.click();
@@ -292,7 +320,7 @@ export default function App() {
                           setConfig({...config, voice: v.id});
                         }
                       }}
-                      className={`w-full flex items-center justify-between p-3 border transition-all ${config.voice === v.id ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'border-zinc-800/50 text-zinc-600 hover:border-zinc-800'}`}
+                      className={`w-full flex items-center justify-between p-3 border transition-all ${config.voice === v.id ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'border-zinc-800/50 text-zinc-600 hover:border-zinc-800'} disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                       <span className={`text-xs ${config.voice !== v.id && 'italic'}`}>{v.label}</span>
                       {config.voice === v.id && <div className="w-2 h-2 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.4)]"></div>}
@@ -318,8 +346,9 @@ export default function App() {
                 <div className="relative">
                   <select 
                     value={config.music}
+                    disabled={isUploading || isProcessing}
                     onChange={(e) => setConfig({...config, music: e.target.value})}
-                    className="w-full bg-zinc-900 border border-zinc-800 appearance-none px-4 py-3 text-sm text-zinc-300 focus:border-red-600 outline-none cursor-pointer transition-colors"
+                    className="w-full bg-zinc-900 border border-zinc-800 appearance-none px-4 py-3 text-sm text-zinc-300 focus:border-red-600 outline-none cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="phonk">Aggressive Phonk</option>
                     <option value="lofi">Lofi Hip Hop</option>
@@ -366,9 +395,19 @@ export default function App() {
             </div>
           </div>
 
-          <div className="mt-auto border-t border-zinc-800 p-8">
+          <div className="mt-auto border-t border-zinc-800 p-8 space-y-4">
+            {isUploading && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-3 px-4 py-2 bg-red-600/5 border border-red-600/20 rounded"
+              >
+                <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                <span className="text-[10px] font-mono text-red-500 uppercase tracking-widest">System Ingestion Active</span>
+              </motion.div>
+            )}
             <button 
-              disabled={!uploadedFilename || isProcessing}
+              disabled={!uploadedFilename || isProcessing || isUploading}
               onClick={processVideo}
               className="w-full bg-zinc-50 text-zinc-950 font-black py-5 uppercase tracking-tighter hover:bg-red-600 hover:text-white transition-all text-lg disabled:bg-zinc-900 disabled:text-zinc-700 disabled:cursor-not-allowed"
             >
@@ -438,14 +477,28 @@ export default function App() {
                   >
                     <div className="text-zinc-800 group-hover:text-red-700 transition-colors mb-4">
                       {isUploading ? (
-                        <div className="w-16 h-16 mx-auto border-2 border-red-900 border-t-red-600 rounded-full animate-spin" />
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                          className="w-16 h-16 mx-auto border-2 border-red-900/30 border-t-red-600 rounded-full" 
+                        />
                       ) : (
                         <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       )}
                     </div>
-                    <p className="text-zinc-500 font-mono text-[10px] uppercase tracking-[0.3em]">
-                      {isUploading ? uploadStatus : "Upload sequence required to preview"}
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-zinc-500 font-mono text-[10px] uppercase tracking-[0.3em]">
+                        {isUploading ? uploadStatus : "Upload sequence required to preview"}
+                      </p>
+                      {isUploading && (
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: "100%" }}
+                          transition={{ duration: 3, repeat: Infinity }}
+                          className="h-[1px] bg-red-600/30 w-full"
+                        />
+                      )}
+                    </div>
                     <h3 className="text-4xl font-black text-zinc-900 group-hover:text-zinc-800 transition-colors uppercase mt-4 italic tracking-tighter">
                       No Input Signal
                     </h3>
@@ -475,15 +528,98 @@ export default function App() {
               </div>
 
               {isProcessing && (
-                <div className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-6 z-50">
-                  <div className="w-16 h-16 border-4 border-red-900 border-t-red-600 rounded-full animate-spin" />
-                  <div className="space-y-2 text-center">
-                    <p className="text-xs text-red-500 font-black uppercase tracking-[0.4em] animate-pulse">Engaging Neural Vision</p>
-                    <p className="text-[10px] font-mono text-zinc-600">Processing audio-visual layers...</p>
+                <div className="absolute inset-0 bg-zinc-950/95 backdrop-blur-xl flex flex-col items-center justify-center gap-12 z-50">
+                  <div className="relative">
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                      className="w-48 h-48 border-2 border-red-900/20 border-t-red-600 rounded-full"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-4xl font-black text-white italic tracking-tighter animate-pulse">
+                        {Math.round(((processingStep + 1) / processingStages.length) * 100)}%
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-6 text-center max-w-sm px-4">
+                    <div className="space-y-2">
+                       <p className="text-xs text-red-500 font-black uppercase tracking-[0.4em] animate-pulse">Neural Genesis in Progress</p>
+                       <p className="text-sm font-mono text-zinc-100 h-6">
+                         {processingStages[processingStep]}
+                       </p>
+                    </div>
+
+                    <div className="flex justify-center gap-1">
+                      {processingStages.map((_, i) => (
+                        <div 
+                          key={i} 
+                          className={`h-1 w-8 rounded-full transition-all duration-500 ${i <= processingStep ? "bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.5)]" : "bg-zinc-800"}`} 
+                        />
+                      ))}
+                    </div>
+
+                    <p className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest leading-relaxed">
+                      Optimizing for vertical attention retention / bypassing source metadata noise
+                    </p>
                   </div>
                 </div>
               )}
             </motion.div>
+
+            {/* Timeline Visualizer */}
+            <div className="mt-8 border border-zinc-800 bg-zinc-950 p-4 rounded-xl relative overflow-hidden">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <Type className="w-3 h-3 text-red-500" />
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Neural Timeline / Synthesis Map</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-600">OFFSET: 00:00:00:00</span>
+              </div>
+              
+              <div className="space-y-2 relative">
+                {/* Playhead */}
+                <motion.div 
+                   animate={{ left: uploadedFilename ? "100%" : "0%" }}
+                   transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                   className="absolute top-0 bottom-0 w-[1px] bg-red-600 z-10 hidden sm:block"
+                />
+
+                {/* Subtitle Track */}
+                <div className="h-4 flex gap-1">
+                  <div className="w-[10px] bg-zinc-900 border border-zinc-800 rounded-sm"></div>
+                  <div className="flex-1 bg-red-600/10 border border-red-600/20 rounded-sm flex items-center px-2">
+                    <div className="w-full h-[2px] bg-red-600/40 rounded-full"></div>
+                  </div>
+                </div>
+
+                {/* Video Track */}
+                <div className="h-10 bg-zinc-900/50 border border-zinc-800 rounded flex overflow-hidden">
+                   {uploadedFilename ? (
+                     <div className="w-full h-full flex gap-0.5">
+                        {Array.from({ length: 24 }).map((_, i) => (
+                          <div key={i} className="flex-1 bg-zinc-800/40 border-r border-zinc-900/50 hover:bg-zinc-700/40 transition-colors"></div>
+                        ))}
+                     </div>
+                   ) : (
+                     <div className="w-full h-full flex items-center justify-center opacity-20 italic text-[10px] text-zinc-500">AWAITING_MEDIA_SOURCE</div>
+                   )}
+                </div>
+
+                {/* Audio Track */}
+                <div className="h-6 flex gap-1">
+                  <div className="w-full bg-zinc-900 border border-zinc-800 rounded-sm flex items-center px-2 gap-1 overflow-hidden">
+                    {Array.from({ length: 40 }).map((_, i) => (
+                      <div 
+                        key={i} 
+                        style={{ height: `${Math.random() * 80 + 20}%` }} 
+                        className={`w-1 rounded-full ${uploadedFilename ? 'bg-red-600/40' : 'bg-zinc-800'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Bottom: Analysis Controls */}
             <div className="mt-8 space-y-8">

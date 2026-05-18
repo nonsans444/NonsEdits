@@ -28,6 +28,7 @@ async function startServer() {
   const uploadsDir = path.join(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log("Created uploads directory at:", uploadsDir);
   }
 
   // Storage Configuration
@@ -125,6 +126,11 @@ async function startServer() {
     const editedFilename = `edited_${baseName}_${Date.now()}.${outputExt}`;
     const outputPath = path.join(uploadsDir, editedFilename);
     const narrationPath = path.join(uploadsDir, "narration_" + Date.now() + ".mp3");
+
+    // Ensure input file exists before starting
+    if (!fs.existsSync(inputPath)) {
+      return res.status(404).json({ success: false, message: "Source file not found on server. Please re-upload." });
+    }
 
     let useNarration = false;
     let aiAnalysis = null;
