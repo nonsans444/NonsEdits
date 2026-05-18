@@ -369,6 +369,13 @@ export default function App() {
                   controls 
                   className="relative z-10 w-full h-full object-contain"
                 />
+              ) : uploadedFilename ? (
+                <video 
+                  key={uploadedFilename}
+                  src={`/uploads/${uploadedFilename}`} 
+                  controls 
+                  className="relative z-10 w-full h-full object-contain opacity-60"
+                />
               ) : (
                 <div className="text-center z-10 p-8">
                   <div 
@@ -383,10 +390,10 @@ export default function App() {
                       )}
                     </div>
                     <p className="text-zinc-500 font-mono text-[10px] uppercase tracking-[0.3em]">
-                      {isUploading ? uploadStatus : uploadedFilename ? "SIGNAL DETECTED / READY FOR SEQUENCE" : "Upload sequence required to preview"}
+                      {isUploading ? uploadStatus : "Upload sequence required to preview"}
                     </p>
                     <h3 className="text-4xl font-black text-zinc-900 group-hover:text-zinc-800 transition-colors uppercase mt-4 italic tracking-tighter">
-                      {uploadedFilename ? "Resource Locked" : "No Input Signal"}
+                      No Input Signal
                     </h3>
                   </div>
                   
@@ -401,9 +408,16 @@ export default function App() {
               )}
 
               {/* Floating UI Tags */}
+              <div className="absolute top-6 left-6 z-20">
+                <span className={`px-3 py-1 bg-zinc-950/80 border text-[9px] font-mono backdrop-blur-sm ${videoResult ? 'border-emerald-500/50 text-emerald-400' : 'border-zinc-800 text-zinc-500'}`}>
+                  {videoResult ? 'MASTER_OUTPUT_STABLE' : 'SOURCE_PREVIEW_SIGNAL'}
+                </span>
+              </div>
+
+              {/* Info Tags */}
               <div className="absolute bottom-6 left-6 flex gap-2 z-20">
-                <span className="px-3 py-1 bg-zinc-950/80 border border-zinc-800 text-[9px] font-mono text-zinc-400 backdrop-blur-sm">RES: 1080x1920</span>
-                <span className="px-3 py-1 bg-zinc-950/80 border border-zinc-800 text-[9px] font-mono text-zinc-400 backdrop-blur-sm">BIT: 12.0Mbps</span>
+                <span className="px-3 py-1 bg-zinc-950/80 border border-zinc-800 text-[9px] font-mono text-zinc-400 backdrop-blur-sm">RES: {config.resolution.toUpperCase()}</span>
+                <span className="px-3 py-1 bg-zinc-950/80 border border-zinc-800 text-[9px] font-mono text-zinc-400 backdrop-blur-sm">FMT: {config.format.toUpperCase()}</span>
               </div>
 
               {isProcessing && (
