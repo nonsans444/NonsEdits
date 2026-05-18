@@ -1,0 +1,6 @@
+{
+  "name": "NonsEdit",
+  "description": "AI-powered video editing platform for creators, featuring automated subtitles and copyright safety checks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
