@@ -88,11 +88,24 @@ export default function App() {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Upload failed with status ${response.status}`);
+        let errorMessage = `Upload failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If response is not JSON (e.g. 504 HTML page)
+          if (response.status === 504) errorMessage = "Gateway Timeout: File too large or server busy.";
+          else if (response.status === 413) errorMessage = "File too large for system processing.";
+        }
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error("Server returned an invalid response during upload.");
+      }
 
       if (data.success) {
         setUploadedFilename(data.filename);
@@ -122,11 +135,22 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Voice upload failed with status ${response.status}`);
+        let errorMessage = `Voice upload failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          if (response.status === 504) errorMessage = "Voice upload timed out.";
+        }
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error("Server returned invalid response during voice ingestion.");
+      }
 
       if (data.success) {
         setVoiceSampleFilename(data.filename);

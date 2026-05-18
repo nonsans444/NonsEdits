@@ -64,21 +64,18 @@ async function startServer() {
   });
 
   // API: Video Upload
-  app.post("/api/upload", (req, res) => {
-    const handler = upload.single("video");
-    handler(req, res, (err) => {
+  app.post("/api/upload", (req, res, next) => {
+    upload.single("video")(req, res, (err) => {
       if (err) {
-        console.error("Upload error:", err);
-        return res.status(err instanceof multer.MulterError ? 400 : 500).json({ 
-          success: false, 
-          message: err.message || "File ingestion failed." 
+        console.error("Multer Video Error:", err);
+        return res.status(err instanceof multer.MulterError ? 400 : 500).json({
+          success: false,
+          message: err.message || "Failed to ingest video stream."
         });
       }
-
       if (!req.file) {
         return res.status(400).json({ success: false, message: "No video file received." });
       }
-
       res.json({ 
         success: true, 
         filename: req.file.filename, 
@@ -88,24 +85,26 @@ async function startServer() {
   });
 
   // API: Voice Sample Upload
+  const voiceMulter = multer({
+    storage: storage,
+    fileFilter: (req, file, cb) => {
+      const allowed = [".mp3", ".wav", ".m4a", ".ogg", ".aac"];
+      if (allowed.includes(path.extname(file.originalname).toLowerCase()) || file.mimetype.startsWith("audio/")) {
+        cb(null, true);
+      } else {
+        cb(new Error("Voice sample must be audio (MP3, WAV, M4A, AAC)."));
+      }
+    },
+    limits: { fileSize: 20 * 1024 * 1024 }
+  });
+
   app.post("/api/upload-voice", (req, res) => {
-    const voiceHandler = multer({
-      storage: storage,
-      fileFilter: (req, file, cb) => {
-        const allowed = [".mp3", ".wav", ".m4a", ".ogg", ".aac"];
-        if (allowed.includes(path.extname(file.originalname).toLowerCase()) || file.mimetype.startsWith("audio/")) {
-          cb(null, true);
-        } else {
-          cb(new Error("Voice sample must be audio (MP3, WAV, M4A, AAC)."));
-        }
-      },
-      limits: { fileSize: 20 * 1024 * 1024 } // Loosened to 20MB
-    }).single("voice");
-    
-    voiceHandler(req, res, (err) => {
-      if (err) return res.status(400).json({ success: false, message: err.message });
+    voiceMulter.single("voice")(req, res, (err) => {
+      if (err) {
+        console.error("Multer Voice Error:", err);
+        return res.status(400).json({ success: false, message: err.message });
+      }
       if (!req.file) return res.status(400).json({ success: false, message: "No audio sample received." });
-      
       res.json({ 
         success: true, 
         filename: req.file.filename, 
@@ -144,14 +143,16 @@ async function startServer() {
         - Background Music: ${music}
         - Voice: ${voice}
         
-        Provide a JSON response with:
-        1. "themes": Array of 3 key themes.
-        2. "sentiment": Overall vibe/sentiment (e.g., Energetic, Dark, Inspirational).
-        3. "engagementScore": Predicted score from 1-100.
-        4. "viralReason": One sentence why it might go viral.
-        5. "narration": A short, viral-style 1-sentence script text.
-        
-        Return ONLY valid JSON.
+        Provide a strictly formatted JSON response. Ensure it is complete and valid.
+        Schema:
+        {
+          "themes": ["theme1", "theme2", "theme3"],
+          "sentiment": "string",
+          "engagementScore": number,
+          "viralReason": "string",
+          "narration": "string"
+        }
+        Return ONLY valid JSON, no markdown formatting.
       `;
 
       const analysisRes = await ai.models.generateContent({
@@ -360,9 +361,22 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  // Global Error Handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Express Error:", err);
+    res.status(err.status || 500).json({
+      success: false,
+      message: err.message || "Internal server error encountered.",
+      error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  });
+
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  server.timeout = 600000; // 10 minutes
+  server.keepAliveTimeout = 600000;
 }
 
 startServer().catch((err) => {
